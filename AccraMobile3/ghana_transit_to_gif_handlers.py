@@ -37,10 +37,14 @@ class StopsHandler(osmium.SimpleHandler):
                 self.stops[n.id]["version"] = []
                 self.stops[n.id]["date"] = []
                 self.stops[n.id]["name"] = []
+                self.stops[n.id]["lat"] = []
+                self.stops[n.id]["lon"] = []
                 self.stops[n.id]["geometry"] = []
             self.stops[n.id]["version"].append(n.version)
             self.stops[n.id]["date"].append(n.timestamp)
             self.stops[n.id]["name"].append(name)
+            self.stops[n.id]["lat"].append(n.location.lat)
+            self.stops[n.id]["lon"].append(n.location.lon)
             self.stops[n.id]["geometry"].append(point)
 
 

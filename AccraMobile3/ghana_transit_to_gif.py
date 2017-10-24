@@ -7,13 +7,13 @@
 import os
 import requests
 
+import shutil
 import datetime
 import osmium
 import pandas as pd
 from shapely.geometry import LineString, MultiLineString
 from shapely.ops import cascaded_union
 import ghana_transit_to_gif_handlers
-
 
 
 url_source = 'http://download.geofabrik.de/africa/ghana.osh.pbf'
@@ -50,6 +50,8 @@ if not os.path.isfile(stops_file):
              "creation_date": v["date"][min_index],
              "last_modif_date": v["date"][max_index],
              "last_name": v["name"][max_index],
+             "last_lat": v["lat"][max_index],
+             "last_lon": v["lon"][max_index],
              "last_geometry": v["geometry"][max_index]
             }
         stops.append(s)
@@ -57,7 +59,7 @@ if not os.path.isfile(stops_file):
     pd.DataFrame.from_dict(stops).to_csv('./stops.csv')
 else:
     print("Le fichier {} existe, chargement depuis le fichier".format(stops_file))
-    stops = pd.read_csv(stops_file).to_dict(orient="records")
+stops = pd.read_csv(stops_file, parse_dates=["creation_date"]).to_dict(orient="records")
 print('fin de chargement des stops : {:d}'.format(len(stops)))
 
 #===============================================
@@ -171,51 +173,92 @@ from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw
 
-def show_date_on_image(image_path, date_to_display):
+def show_date_on_image(image_path, date_to_display, nb_stops, nb_routes):
     print("modification de l'image")
     img = Image.open(image_path)
     draw = ImageDraw.Draw(img)
-
-    text_offset = [img.size[0] - 200, img.size[1] - 50]
+    # Affichage de la date
+    text_offset = [img.size[0] - 400, img.size[1] - 50]
     text_border = 4
     text_length = 119
     text_size = 20
+    font = ImageFont.truetype('Pillow/Tests/fonts/LiberationMono-Bold.ttf', text_size)
     draw.rectangle([
         text_offset[0] - text_border,
         text_offset[1] - text_border,
         text_offset[0] + text_border + text_length,
         text_offset[1] + text_border + text_size
         ], fill='#858687')
-
-    font = ImageFont.truetype('Pillow/Tests/fonts/LiberationMono-Bold.ttf', text_size)
     draw.text((text_offset[0], text_offset[1]), date_to_display.strftime('%Y-%m-%d'),'#000000',font=font)
+    # Affichage du nombre d'arrêts
+    text_offset = [img.size[0] - 400, img.size[1] - 120]
+    text_border = 2
+    text_length = 230
+    text_size = 14
+    font = ImageFont.truetype('Pillow/Tests/fonts/LiberationMono-Bold.ttf', text_size)
+    draw.rectangle([
+        text_offset[0] - text_border,
+        text_offset[1] - text_border,
+        text_offset[0] + text_border + text_length,
+        text_offset[1] + text_border + text_size
+        ], fill='#858687')
+    text_to_display = "{: >4} bus routes".format(nb_routes)
+    draw.text((text_offset[0], text_offset[1]), text_to_display,'#000000',font=font)
+    # Affichage du nombre de routes
+    text_offset = [img.size[0] - 400, img.size[1] - 90]
+    text_border = 2
+    text_length = 230
+    text_size = 14
+    font = ImageFont.truetype('Pillow/Tests/fonts/LiberationMono-Bold.ttf', text_size)
+    draw.rectangle([
+        text_offset[0] - text_border,
+        text_offset[1] - text_border,
+        text_offset[0] + text_border + text_length,
+        text_offset[1] + text_border + text_size
+        ], fill='#858687')
+    text_to_display = "{: >4} bus stops and platforms".format(nb_stops)
+    draw.text((text_offset[0], text_offset[1]), text_to_display,'#000000',font=font)
+    # Enregistrement de l'image
     img.save(image_path)
 
 attributions = "cartodb | OSM"
 tiles = 'https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png'
-m = folium.Map(location=[5.6204,-0.2125], zoom_start=12, attr=attributions, tiles=tiles, png_enabled=True)
+m = folium.Map(location=[5.6204,-0.2125], zoom_start=12,
+    max_zoom=12, min_zoom=12,
+    attr=attributions, tiles=tiles, png_enabled=True)
 
-img_tmp_dir = './images'
-if not os.path.exists(img_tmp_dir):
-    os.makedirs(img_tmp_dir)
+img_tmp_dir = './tmp_images'
+if os.path.exists(img_tmp_dir):
+    shutil.rmtree(img_tmp_dir)
+os.makedirs(img_tmp_dir)
 
 start_date = datetime.datetime.strptime('2017-07-15', '%Y-%m-%d')
 end_date = datetime.datetime.strptime('2017-09-06', '%Y-%m-%d')
-delta_days = 5
+delta_days = 20
 date_cursor = start_date
 for r in routes:
     r["displayed"] = False
+for s in stops:
+    s["displayed"] = False
+nb_routes_displayed = 0
+nb_stops_displayed = 0
 while date_cursor <= end_date:
     for r in routes:
         if not r["displayed"] and r["creation_date"] < pd.to_datetime(date_cursor):
             folium.PolyLine(r["geom_raw"], color="red", weight=1.5, opacity=1).add_to(m)
             r["displayed"] = True
+            nb_routes_displayed += 1
+    for s in stops:
+        if not s["displayed"] and s["creation_date"] < pd.to_datetime(date_cursor):
+            s["displayed"] = True
+            folium.Circle([s["last_lat"], s["last_lon"]], radius=2.5, color="red", opacity=1).add_to(m)
+            nb_stops_displayed += 1
     print("Enregistrement de la carte pour la date du {}".format(date_cursor.strftime('%Y-%m-%d')))
     image_path = os.path.join(img_tmp_dir, "image_{}.png".format(date_cursor.strftime('%Y-%m-%d')))
     with open(image_path, "wb")  as image_file:
         m._png_image = None #on réinitialise le PNG
         image_file.write(m._to_png())
-    show_date_on_image(image_path, date_cursor)
+    show_date_on_image(image_path, date_cursor, nb_stops_displayed, nb_routes_displayed)
     date_cursor = date_cursor + datetime.timedelta(days=delta_days)
 
 #===============================================
