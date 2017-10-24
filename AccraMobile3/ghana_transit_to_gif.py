@@ -219,7 +219,9 @@ def show_date_on_image(image_path, date_to_display, nb_stops, nb_routes):
     text_to_display = "{: >4} bus stops and platforms".format(nb_stops)
     draw.text((text_offset[0], text_offset[1]), text_to_display,'#000000',font=font)
     # Enregistrement de l'image
-    img.save(image_path)
+    img_croped = img.crop((50, 0, img.size[0], img.size[1]-15))
+    img.close()
+    img_croped.save(image_path)
 
 attributions = "cartodb | OSM"
 tiles = 'https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png'
